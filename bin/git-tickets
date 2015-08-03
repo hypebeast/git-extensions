@@ -51,10 +51,10 @@ function _error() {
 }
 
 #
-# Get all tags
+# Get all tags sorted by version numbers
 #
 function fetch_tags() {
-    git tag | egrep -o '[0-9]+\.[0-9]+\.[0-9]' | sort -n
+    git tag --sort=v:refname
 }
 
 #
@@ -62,8 +62,7 @@ function fetch_tags() {
 #
 function latest_tag() {
     local tags=$( fetch_tags )
-    IFS=$'\n' read -a latest <<< ${tags}
-    echo ${latest}
+    echo ${tags} | rev | cut -d' ' -f1 | rev
 }
 
 
@@ -89,12 +88,9 @@ function main() {
 
     #git fetch --tags
 
-    local tag=$(latest_tag)
-    echo ${tag}
-
     if [[ "$#" -eq 0 ]]; then
         # If no revisions are specified compare the current revision with the latest tag
-        #start_revision=
+        start_revision=$( latest_tag )
         end_revision=$CURRENT_BRANCH
     elif [[ "$#" -eq 1 ]]; then
         # If only the start revision is specified compare it with the current active branch
@@ -113,5 +109,3 @@ function main() {
 main "$@"
 
 exit 0
-
-
