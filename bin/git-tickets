@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+
+# vim :set ft=sh
+
+#set -u
+
+# Generate a list with all tickets that are included in a branch or tag compared
+# to another branch or tag
+#
+# If this script is in your $PATH it can be called like this:
+#
+#   git tickets
+#
+# The script requires git on your system.
+
+PROGNAME="git-tickets"
+GIT_LOG_OPTIONS="--oneline"
+
+# Return the name of the current branch
+CURRENT_BRANCH=`git rev-parse --abbrev-ref HEAD`
+
+function _usage() {
+cat << EOF
+usage: $PROGNAME [<options>] [<start revision>] [<end revision>] [<project filter>]
+usage: $PROGNAME -h|--help
+
+Generate a list with all tickets that are included in a branch or tag compared
+to another branch or tag. The ticket numbers are extracted from git logs. The
+ticket numbers must be in the form of "SZINT-[0-9]*" to be parsed properly.
+
+Use it e.g. to get all tickets that are included in one release branch.
+
+Example usage:
+
+git tickets 15.24.1 15.26.1
+
+This command lists all tickets that are included in branch 15.26.1 compared
+to branch 15.24.1.
+
+OPTIONS:
+  -h, --help             Show this message
+EOF
+}
+
+function _error() {
+  [ $# -eq 0 ] && _usage && exit 0
+
+  echo
+  echo "ERROR: " "$@"
+  echo
+}
+
+#
+# Get all tags
+#
+function fetch_tags() {
+    git tag | egrep -o '[0-9]+\.[0-9]+\.[0-9]' | sort -n
+}
+
+#
+# Returns the latest tag (sort by release number)
+#
+function latest_tag() {
+    local tags=$( fetch_tags )
+    IFS=$'\n' read -a latest <<< ${tags}
+    echo ${latest}
+}
+
+
+trap '_exit' SIGINT SIGQUIT SIGTERM
+
+function main() {
+    # Parse options
+    if [[ "$#" -eq 1 ]] && [[ "$1" == -* ]]; then
+        case $1 in
+            -h | --help )
+            _usage
+            exit 1
+            ;;
+            * )
+            _error "Invalid option: $1" && _usage && exit 1
+            ;;
+        esac
+    fi
+
+    local start_revision=""
+    local end_revision=""
+    local project_filter=""
+
+    #git fetch --tags
+
+    local tag=$(latest_tag)
+    echo ${tag}
+
+    if [[ "$#" -eq 0 ]]; then
+        # If no revisions are specified compare the current revision with the latest tag
+        #start_revision=
+        end_revision=$CURRENT_BRANCH
+    elif [[ "$#" -eq 1 ]]; then
+        # If only the start revision is specified compare it with the current active branch
+        start_revision="$1"
+        end_revision=$CURRENT_BRANCH
+    elif [[ "$#" -eq 2 ]]; then
+        start_revision="$1"
+        end_revision="$2"
+    else
+        _error "Invalid usage" && _usage && exit 1
+    fi
+
+    git log "$GIT_LOG_OPTIONS" "${start_revision}"'..'"${end_revision}" | grep -i -o -e "SZINT-[0-9]*" | tr '[:lower:]' '[:upper:]' | sort -u | uniq
+}
+
+main "$@"
+
+exit 0
+
+
