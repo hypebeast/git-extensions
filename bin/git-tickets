@@ -2,10 +2,8 @@
 
 # vim :set ft=sh
 
-#set -u
-
-# Generate a list with all tickets that are included in a branch or tag compared
-# to another branch or tag
+# Generate a list with all tickets which are included in a specific
+# revision, but not in another revision
 #
 # If this script is in your $PATH it can be called like this:
 #
@@ -21,24 +19,49 @@ CURRENT_BRANCH=`git rev-parse --abbrev-ref HEAD`
 
 function _usage() {
 cat << EOF
-usage: $PROGNAME [<options>] [<start revision>] [<end revision>] [<project filter>]
+usage: $PROGNAME [<options>] [<start revision>] [<end revision>]
 usage: $PROGNAME -h|--help
 
-Generate a list with all tickets that are included in a branch or tag compared
-to another branch or tag. The ticket numbers are extracted from git logs. The
-ticket numbers must be in the form of "SZINT-[0-9]*" to be parsed properly.
+Generate a list with all tickets which are included in the diff between two revisions.
+The ticket numbers are extracted from log messages. The ticket numbers must be in
+the form of "[a-zA-Z]{2,}-[0-9]{1,}", but a custom project filter is specified
+(with the -f or --filter option).
 
 Use it e.g. to get all tickets that are included in one release branch.
 
-Example usage:
+Example usages:
 
 git tickets 15.24.1 15.26.1
 
-This command lists all tickets that are included in branch 15.26.1 compared
-to branch 15.24.1.
+This command lists all tickets that are included in branch 15.26.1 but not in
+revision 15.24.1.
+
+-------
+
+git tickets 15.24.1
+
+This command lists all tickets that are included in the current active revision
+but not in revision 15.24.1.
+
+-------
+
+git tickets
+
+This command lists all tickets that are included in the current active revision
+but not in the latest tag. NOTE: This only works with git >= 2.3.3.
+
+-------
+
+git tickets -f "PROJECTNAME-[0-9]{1,4}" 15.24.1 15.26.1
+
+This command lists all tickets that are included in branch 15.26.1 but not in
+revision 15.24.1. The ticket numbers must start with "PROJECTNAME-".
+
 
 OPTIONS:
   -h, --help             Show this message
+  -f, --filter           Regex filter for ticket numbers
+  -t, --tags             Fetch tags before searching for tickets
 EOF
 }
 
@@ -53,8 +76,11 @@ function _error() {
 #
 # Get all tags sorted by version numbers
 #
+# Note: This works only with git >= 2.3.3
+#
 function fetch_tags() {
     git tag --sort=v:refname
+    #git for-each-ref --format='%(refname)' refs/tags | sort -n | sed "s/^refs\/tags\///"
 }
 
 #
@@ -69,12 +95,26 @@ function latest_tag() {
 trap '_exit' SIGINT SIGQUIT SIGTERM
 
 function main() {
+    local filter="[a-zA-Z]{2,}-[0-9]{1,}"
+    local start_revision=""
+    local end_revision=""
+    local project_filter=""
+    local fetchTags=false
+
     # Parse options
-    if [[ "$#" -eq 1 ]] && [[ "$1" == -* ]]; then
+    if [[ "$1" == -* ]]; then
         case $1 in
             -h | --help )
             _usage
             exit 1
+            ;;
+            -f | --filter )
+            filter=$2
+            shift 2
+            ;;
+            -t | --tags )
+            fetchTags=true
+            shift
             ;;
             * )
             _error "Invalid option: $1" && _usage && exit 1
@@ -82,11 +122,9 @@ function main() {
         esac
     fi
 
-    local start_revision=""
-    local end_revision=""
-    local project_filter=""
-
-    #git fetch --tags
+    if [[ $fetchTags = true ]]; then
+        git fetch --tags
+    fi
 
     if [[ "$#" -eq 0 ]]; then
         # If no revisions are specified compare the current revision with the latest tag
@@ -103,7 +141,7 @@ function main() {
         _error "Invalid usage" && _usage && exit 1
     fi
 
-    git log "$GIT_LOG_OPTIONS" "${start_revision}"'..'"${end_revision}" | grep -i -o -e "SZINT-[0-9]*" | tr '[:lower:]' '[:upper:]' | sort -u | uniq
+    git log "$GIT_LOG_OPTIONS" "${start_revision}"'..'"${end_revision}" | egrep -o ${filter} | tr '[:lower:]' '[:upper:]' | sort -u | uniq
 }
 
 main "$@"
